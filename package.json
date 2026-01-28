@@ -1,0 +1,66 @@
+{
+  "name": "subtitle-translator",
+  "version": "1.0.0",
+  "description": "AI-powered subtitle translator supporting SRT, VTT, ASS formats with MKV extraction",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "subtitle-translator": "./dist/cli.js",
+    "stt": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/cli.ts",
+    "stt": "tsx src/cli.ts",
+    "extract": "tsx src/cli.ts extract",
+    "translate": "tsx src/cli.ts translate",
+    "batch": "tsx src/cli.ts batch",
+    "init": "tsx src/cli.ts init"
+  },
+  "keywords": [
+    "subtitle",
+    "translator",
+    "translation",
+    "srt",
+    "vtt",
+    "ass",
+    "mkv",
+    "extract",
+    "ai",
+    "kimi",
+    "localization",
+    "i18n"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/morphaxl/subtitle-translator.git"
+  },
+  "homepage": "https://github.com/morphaxl/subtitle-translator#readme",
+  "bugs": {
+    "url": "https://github.com/morphaxl/subtitle-translator/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "cli-progress": "^3.12.0",
+    "commander": "^14.0.2",
+    "dotenv": "^17.2.3",
+    "ora": "^9.1.0",
+    "tsx": "^4.21.0",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "@types/cli-progress": "^3.11.6",
+    "@types/node": "^25.1.0",
+    "typescript": "^5.9.3"
+  }
+}

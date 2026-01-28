@@ -1,0 +1,39 @@
+1
+00:00:01,000 --> 00:00:04,000
+Hey, what's up? Long time no see!
+
+2
+00:00:04,500 --> 00:00:07,000
+Yeah, it's been ages. How have you been?
+
+3
+00:00:07,500 --> 00:00:11,000
+Pretty good, actually. Just got back from a trip to Japan.
+
+4
+00:00:11,500 --> 00:00:14,000
+No way! That's awesome. How was it?
+
+5
+00:00:14,500 --> 00:00:18,000
+Mind-blowing. The food, the culture, everything was incredible.
+
+6
+00:00:18,500 --> 00:00:22,000
+I've always wanted to go there. Did you visit Tokyo?
+
+7
+00:00:22,500 --> 00:00:26,000
+Yeah, Tokyo was crazy busy but so much fun.
+
+8
+00:00:26,500 --> 00:00:30,000
+I bet! Did you try any street food?
+
+9
+00:00:30,500 --> 00:00:34,000
+Oh man, the takoyaki was to die for.
+
+10
+00:00:34,500 --> 00:00:38,000
+Now you're making me hungry! We should grab lunch sometime.

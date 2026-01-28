@@ -1,0 +1,27 @@
+node_modules/
+dist/
+.env
+*.log
+
+# Test/sample files
+movie/
+*.mkv
+*.mp4
+*.avi
+
+# Generated translations (keep samples)
+!sample.srt
+*.turkish.srt
+*.hindi.srt
+*.japanese.srt
+*.korean.srt
+*.spanish.srt
+*.french.srt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
