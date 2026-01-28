@@ -1,137 +1,106 @@
 # Subtitle Translator
 
-AI-powered subtitle translation tool with support for **SRT**, **VTT**, and **ASS** formats. Extract subtitles from MKV/MP4 files and translate them to any language.
+Multi-provider AI subtitle translator with support for **OpenAI**, **Anthropic**, **Google Gemini**, **Kimi**, and **Whisper** (free local option).
 
 ## Features
 
-- **Multi-format support**: SRT, VTT, ASS/SSA input and output
-- **Video extraction**: Extract subtitles directly from MKV/MP4/AVI/WebM files
-- **Batch processing**: Translate multiple files with a single YAML config
-- **Natural translations**: AI-powered translations that preserve tone and cultural context
-- **Progress tracking**: Real-time progress bars and statistics
-- **Request-optimized**: Large batch sizes to minimize API calls
+- **Multi-provider support**: OpenAI, Anthropic, Gemini, Kimi, and free Whisper
+- **Auto-detection**: Automatically detects provider from API key or environment
+- **Multi-format**: SRT, VTT, ASS/SSA input and output
+- **Video extraction**: Extract subtitles from MKV/MP4/AVI/WebM files
+- **Free option**: Use Whisper for free local transcription/translation
+- **Batch processing**: Translate multiple files with YAML config
+- **Smart batching**: Optimized API calls to minimize costs
+
+## Quick Start
+
+```bash
+# Clone and install
+git clone https://github.com/morphaxl/subtitle-translator.git
+cd subtitle-translator
+pnpm install
+
+# Set your API key (pick one)
+export OPENAI_API_KEY=sk-...
+# or ANTHROPIC_API_KEY, GEMINI_API_KEY, KIMI_API_KEY
+
+# Translate!
+pnpm run translate movie.srt --to Spanish
+```
 
 ## Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/morphaxl/subtitle-translator.git
-cd subtitle-translator
-
-# Install dependencies
 pnpm install
-
-# Set up your API key
-echo "KIMI_API_KEY=your-api-key" > .env
 ```
 
 ### Prerequisites
 
 - **Node.js 18+**
-- **ffmpeg** (for extracting subtitles from video files)
-- **Kimi API key** from [kimi.com/coding](https://kimi.com/coding/profile)
-
-#### Installing ffmpeg
+- **ffmpeg** (for extracting subtitles from video)
+- **Whisper** (optional, for free local transcription)
 
 ```bash
-# macOS
-brew install ffmpeg
+# Install ffmpeg
+brew install ffmpeg        # macOS
+sudo apt install ffmpeg    # Linux
 
-# Ubuntu/Debian
-sudo apt install ffmpeg
-
-# Windows (with chocolatey)
-choco install ffmpeg
-```
-
-## Quick Start
-
-```bash
-# Translate a subtitle file
-pnpm run translate movie.srt --to Spanish
-
-# Extract subtitles from video
-pnpm run extract movie.mkv --list
-pnpm run extract movie.mkv --stream 0
-
-# Batch process multiple files
-pnpm run init    # creates jobs.yaml
-pnpm run batch   # processes all jobs
+# Install Whisper (optional, for free transcription)
+pip install -U openai-whisper
 ```
 
 ---
 
-## Extracting Subtitles from Video Files
+## Providers
 
-Extract embedded subtitles from MKV, MP4, AVI, WebM, and other video containers.
+### Available Providers
 
-### Supported Formats
+| Provider | Models | Pricing | Best For |
+|----------|--------|---------|----------|
+| **OpenAI** | gpt-4o, gpt-4o-mini | Per token | High quality, fast |
+| **Anthropic** | claude-3.5-sonnet, claude-3-haiku | Per token | Natural translations |
+| **Gemini** | gemini-1.5-pro, gemini-1.5-flash | Per token | Cost effective |
+| **Kimi** | kimi-for-coding | Per request | Bulk translations |
+| **Whisper** | tiny, base, small, medium, large | **FREE** | Audio transcription |
 
-| Input | Subtitle Codecs |
-|-------|-----------------|
-| MKV | SRT, ASS/SSA, VobSub, PGS |
-| MP4 | SRT, tx3g |
-| AVI | SRT |
-| WebM | WebVTT |
+### Configuration
 
-### List Available Subtitle Streams
-
-```bash
-pnpm run extract movie.mkv --list
-```
-
-Output:
-```
-📼 Subtitle streams in movie.mkv:
-
-──────────────────────────────────────────────────────────────────────
-  0  │  subrip      │  English      - SDH
-  1  │  subrip      │  Spanish     
-  2  │  ass         │  Japanese     - Styled
-  3  │  hdmv_pgs    │  English      - Forced
-──────────────────────────────────────────────────────────────────────
-
-Use: stt extract "movie.mkv" --stream <n>
-```
-
-### Extract a Specific Stream
+Set API keys via environment variables:
 
 ```bash
-# Extract stream 0 (first subtitle)
-pnpm run extract movie.mkv --stream 0
-
-# Extract with custom output path
-pnpm run extract movie.mkv --stream 1 -o spanish.srt
-
-# Extract all streams at once
-pnpm run extract movie.mkv --all
+# .env file or export
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GEMINI_API_KEY=AIza...
+KIMI_API_KEY=sk-kimi-...
 ```
 
-### Extract Command Options
+Or pass via CLI:
 
 ```bash
-pnpm run extract <video> [options]
+pnpm run translate movie.srt --to Hindi --provider openai --api-key sk-...
+```
 
-Options:
-  -o, --output <path>      Output file path
-  -s, --stream <n>         Subtitle stream index (default: 0)
-  -l, --list               List available subtitle streams
-  -a, --all                Extract all subtitle streams
+### Auto-Detection
+
+The tool automatically detects which provider to use:
+
+1. **Explicit**: `--provider openai` flag
+2. **Key prefix**: `sk-kimi-` → Kimi, `sk-ant-` → Anthropic, `AIza` → Gemini
+3. **Environment**: Checks OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, KIMI_API_KEY
+4. **Fallback**: Whisper (free, local)
+
+### List Configured Providers
+
+```bash
+pnpm run providers
 ```
 
 ---
 
-## Translating Subtitles
+## Commands
 
-### Basic Translation
-
-```bash
-pnpm run translate movie.srt --to Hindi
-```
-
-Output: `movie.hindi.srt`
-
-### Translate Command Options
+### Translate Subtitles
 
 ```bash
 pnpm run translate <input> [options]
@@ -141,71 +110,209 @@ Options:
   -f, --from <lang>        Source language (default: English)
   -t, --to <lang>          Target language (default: Hindi)
   --format <fmt>           Output format: srt, vtt, ass
-  -b, --batch-size <n>     Subtitles per API request (default: 500)
-  -k, --api-key <key>      API key (or use KIMI_API_KEY env)
+  -p, --provider <name>    Provider: openai, anthropic, gemini, kimi
+  -k, --api-key <key>      API key
+  -m, --model <model>      Model name (provider-specific)
+  -b, --batch-size <n>     Subtitles per API call (default: 100)
   -q, --quiet              Minimal output
 ```
 
-### Convert Between Formats
+**Examples:**
 
 ```bash
-# SRT to VTT
-pnpm run translate movie.srt --to English --format vtt
+# Auto-detect provider from environment
+pnpm run translate movie.srt --to Spanish
 
-# SRT to ASS
-pnpm run translate movie.srt --to English --format ass
+# Use specific provider
+pnpm run translate movie.srt --to Japanese --provider anthropic
+
+# Use specific model
+pnpm run translate movie.srt --to Korean --provider openai --model gpt-4o
 ```
 
----
-
-## Batch Processing
-
-Process multiple files with a single YAML config.
-
-### Create Config
+### Extract from Video
 
 ```bash
+pnpm run extract <video> [options]
+
+Options:
+  -l, --list               List available subtitle streams
+  -s, --stream <n>         Extract specific stream (default: 0)
+  -a, --all                Extract all streams
+  -o, --output <path>      Output file path
+```
+
+**Examples:**
+
+```bash
+# List available subtitles
+pnpm run extract movie.mkv --list
+
+# Extract stream 0
+pnpm run extract movie.mkv --stream 0
+
+# Extract all streams
+pnpm run extract movie.mkv --all
+```
+
+### Transcribe with Whisper (FREE)
+
+```bash
+pnpm run transcribe <audio/video> [options]
+
+Options:
+  -m, --model <model>      Whisper model: tiny, base, small, medium, large
+  -l, --language <lang>    Source language (auto-detected if omitted)
+  --translate              Translate to English (only TO English)
+  -f, --format <fmt>       Output format: srt, vtt, txt, json
+  -o, --output <dir>       Output directory
+  --list-models            Show available Whisper models
+```
+
+**Examples:**
+
+```bash
+# Transcribe audio to SRT (same language)
+pnpm run transcribe podcast.mp3 --model base
+
+# Translate foreign audio to English (FREE!)
+pnpm run transcribe spanish_movie.mp4 --model medium --translate
+
+# List available models
+pnpm run transcribe --list-models
+```
+
+> **Note**: Whisper can only translate **TO English**. For translation to other languages, use AI providers.
+
+### Batch Processing
+
+```bash
+# Create config
 pnpm run init
+
+# Edit jobs.yaml, then run
+pnpm run batch
+
+# Preview without executing
+pnpm run batch --dry-run
 ```
 
-### Edit jobs.yaml
+**jobs.yaml example:**
 
 ```yaml
 defaults:
   from: English
-  batchSize: 500
 
 jobs:
-  # Translate SRT to multiple languages
   - input: movie.srt
     to: Hindi
 
   - input: movie.srt
     to: Japanese
 
-  - input: movie.srt
-    to: Korean
-
-  # Extract from MKV and translate
   - input: movie.mkv
     stream: 0
     to: Spanish
-    output: movie_es.srt
-
-  # Custom output path
-  - input: episode1.srt
-    to: French
-    output: translations/episode1_fr.srt
 ```
 
-### Run Batch
+---
+
+## Provider Comparison
+
+### Quality vs Cost
+
+| Provider | Quality | Speed | Cost |
+|----------|---------|-------|------|
+| OpenAI GPT-4o | ★★★★★ | Fast | $$$ |
+| OpenAI GPT-4o-mini | ★★★★☆ | Very Fast | $$ |
+| Anthropic Claude 3.5 | ★★★★★ | Fast | $$$ |
+| Anthropic Haiku | ★★★★☆ | Very Fast | $ |
+| Gemini 1.5 Pro | ★★★★☆ | Fast | $$ |
+| Gemini 1.5 Flash | ★★★☆☆ | Very Fast | $ |
+| Kimi | ★★★★☆ | Medium | $ (per request) |
+| Whisper | N/A | Slow | **FREE** |
+
+### Recommended Setup
+
+**Budget-conscious:**
+```bash
+export GEMINI_API_KEY=AIza...
+# Uses gemini-1.5-flash by default
+```
+
+**High quality:**
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+# Uses claude-3.5-sonnet by default
+```
+
+**Bulk translations:**
+```bash
+export KIMI_API_KEY=sk-kimi-...
+# Pay per request, not per token - great for large files
+```
+
+**Free (audio only):**
+```bash
+pip install -U openai-whisper
+pnpm run transcribe video.mp4 --translate
+# Then translate the English SRT to target language
+```
+
+---
+
+## Complete Workflow Examples
+
+### Video to Translated Subtitles
 
 ```bash
-# Preview what will happen
-pnpm run batch --dry-run
+# 1. Check available subtitle streams
+pnpm run extract movie.mkv --list
 
-# Execute all jobs
-pnpm run batch
+# 2. Extract English subtitles
+pnpm run extract movie.mkv --stream 0 -o movie.srt
+
+# 3. Translate to Turkish
+pnpm run translate movie.srt --to Turkish
+
+# Result: movie.turkish.srt
+```
+
+### Foreign Audio to Any Language
+
+```bash
+# 1. Transcribe/translate to English with Whisper (FREE)
+pnpm run transcribe foreign_movie.mp4 --model medium --translate -o .
+
+# 2. Translate English to target language
+pnpm run translate foreign_movie.srt --to Hindi --provider gemini
+
+# Result: foreign_movie.hindi.srt
+```
+
+### Batch Multi-Language
+
+```bash
+# Create jobs.yaml
+cat > jobs.yaml << 'EOF'
+defaults:
+  from: English
+
+jobs:
+  - input: movie.srt
+    to: Spanish
+  - input: movie.srt
+    to: French
+  - input: movie.srt
+    to: German
+  - input: movie.srt
+    to: Japanese
+  - input: movie.srt
+    to: Korean
+EOF
+
+# Run batch
+pnpm run batch --provider gemini
 ```
 
 ---
@@ -223,102 +330,60 @@ Use full names or ISO codes:
 | tr | Turkish | it | Italian |
 | ar | Arabic | pt | Portuguese |
 | ru | Russian | nl | Dutch |
-| th | Thai | pl | Polish |
-| vi | Vietnamese | sv | Swedish |
-
----
-
-## Configuration
-
-### Environment Variables
-
-Create a `.env` file:
-
-```bash
-KIMI_API_KEY=sk-kimi-xxx
-```
-
-Or pass via CLI:
-
-```bash
-pnpm run translate movie.srt --to Hindi --api-key sk-kimi-xxx
-```
-
-### Get Your API Key
-
-1. Go to [kimi.com/coding](https://kimi.com/coding/profile)
-2. Sign in / create account
-3. Copy your API key (starts with `sk-kimi-`)
-
-### Optimizing for API Costs
-
-Kimi Code API is billed **per request**, not tokens. Use larger batch sizes:
-
-```bash
-# Default: 500 subtitles per request (~3 requests for a movie)
-pnpm run translate movie.srt --to Hindi
-
-# Aggressive: 1000 subtitles per request (~2 requests)
-pnpm run translate movie.srt --to Hindi --batch-size 1000
-```
-
----
-
-## Complete Workflow Example
-
-### MKV → Translated Subtitles
-
-```bash
-# 1. Check available subtitles in the video
-pnpm run extract movie.mkv --list
-
-# 2. Extract English subtitles (stream 3 in this example)
-pnpm run extract movie.mkv --stream 3 -o movie.srt
-
-# 3. Translate to Turkish
-pnpm run translate movie.srt --to Turkish
-
-# Result: movie.turkish.srt (synced with original timing)
-```
-
-### Translate to Multiple Languages
-
-```bash
-# Create jobs.yaml
-cat > jobs.yaml << 'EOF'
-defaults:
-  from: English
-
-jobs:
-  - input: movie.srt
-    to: Hindi
-  - input: movie.srt
-    to: Turkish
-  - input: movie.srt
-    to: Arabic
-  - input: movie.srt
-    to: Japanese
-EOF
-
-# Run batch translation
-pnpm run batch
-```
 
 ---
 
 ## Troubleshooting
 
-### "ffmpeg not found"
-Install ffmpeg (see [Installing ffmpeg](#installing-ffmpeg))
-
-### "No subtitle streams found"
-The video file doesn't have embedded subtitles. You'll need an external SRT file.
-
 ### "API key required"
-Set your API key in `.env` or pass via `--api-key`
 
-### Subtitles out of sync
-The tool preserves original timestamps exactly. If sync is off, the source SRT was already out of sync.
+Set an API key via environment variable or `--api-key` flag:
+
+```bash
+export OPENAI_API_KEY=sk-...
+# or
+pnpm run translate movie.srt --to Hindi --api-key sk-...
+```
+
+### "Whisper not installed"
+
+Install Whisper CLI:
+
+```bash
+pip install -U openai-whisper
+brew install ffmpeg  # also required
+```
+
+### "ffmpeg not found"
+
+Install ffmpeg:
+
+```bash
+brew install ffmpeg        # macOS
+sudo apt install ffmpeg    # Linux
+choco install ffmpeg       # Windows
+```
+
+### Rate limits / 429 errors
+
+The tool automatically retries with exponential backoff. For persistent issues:
+
+```bash
+# Reduce batch size
+pnpm run translate movie.srt --to Hindi --batch-size 50
+
+# Add delay between batches
+pnpm run translate movie.srt --to Hindi --delay 1000
+```
+
+---
+
+## API Key Links
+
+- **OpenAI**: https://platform.openai.com/api-keys
+- **Anthropic**: https://console.anthropic.com/settings/keys
+- **Google Gemini**: https://aistudio.google.com/apikey
+- **Kimi**: https://kimi.com/coding/profile
 
 ---
 

@@ -1,44 +1,19 @@
-import type { Subtitle } from './subtitles.js';
+import type { Subtitle } from '../subtitles.js';
+import type { ProviderConfig, TranslationProvider, TranslationStats } from './types.js';
+import { SYSTEM_PROMPT, PROVIDERS } from './types.js';
 
-export interface TranslatorConfig {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-  sourceLang: string;
-  targetLang: string;
-  maxRetries?: number;
-  retryDelay?: number;
-}
-
-export interface TranslationStats {
-  totalTokens: number;
-  inputTokens: number;
-  outputTokens: number;
-  cachedTokens: number;
-  apiCalls: number;
-  retries: number;
-}
-
-interface KimiResponse {
-  content: Array<{ type: string; text: string }>;
+interface OpenAIResponse {
+  choices: Array<{
+    message: {
+      content: string;
+    };
+  }>;
   usage?: {
-    input_tokens?: number;
-    output_tokens?: number;
-    cached_tokens?: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
     total_tokens?: number;
   };
 }
-
-const SYSTEM_PROMPT = `You are an expert subtitle translator. Translate naturally while:
-- Adapting idioms and cultural references for the target audience
-- Keeping translations concise for subtitle timing
-- Preserving tone, emotion, and formality level
-- Handling sentence fragments gracefully
-
-CRITICAL: You will receive N numbered lines. Return EXACTLY N translations, one per line.
-Format each line as: [number] translation
-Example input: [1] Hello [2] Goodbye
-Example output: [1] Hola [2] Adiós`;
 
 async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -75,16 +50,20 @@ async function fetchWithRetry<T>(
   throw lastError;
 }
 
-export function createTranslator(config: TranslatorConfig) {
+export function createOpenAIProvider(config: ProviderConfig): TranslationProvider {
   const { 
     apiKey, 
-    baseUrl, 
-    model, 
+    baseUrl = PROVIDERS.openai.baseUrl,
+    model = PROVIDERS.openai.defaultModel,
     sourceLang, 
     targetLang,
     maxRetries = 3,
     retryDelay = 1000,
   } = config;
+
+  if (!apiKey) {
+    throw new Error('OpenAI API key is required');
+  }
 
   const stats: TranslationStats = {
     totalTokens: 0,
@@ -103,28 +82,29 @@ ${inputLines.map((line, i) => `[${i + 1}] ${line}`).join('\n')}
 
 Output exactly ${subtitles.length} translated lines:`;
 
-    const doRequest = async (): Promise<KimiResponse> => {
-      const response = await fetch(`${baseUrl}/v1/messages`, {
+    const doRequest = async (): Promise<OpenAIResponse> => {
+      const response = await fetch(`${baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
+          'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           model,
-          max_tokens: 32000,
-          system: SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: userPrompt }],
+          max_tokens: 16000,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt }
+          ],
         }),
       });
 
       if (!response.ok) {
         const error = await response.text();
-        throw new Error(`API error ${response.status}: ${error}`);
+        throw new Error(`OpenAI API error ${response.status}: ${error}`);
       }
 
-      return response.json() as Promise<KimiResponse>;
+      return response.json() as Promise<OpenAIResponse>;
     };
 
     const data = await fetchWithRetry(
@@ -139,36 +119,13 @@ Output exactly ${subtitles.length} translated lines:`;
 
     stats.apiCalls++;
     if (data.usage) {
-      stats.inputTokens += data.usage.input_tokens || 0;
-      stats.outputTokens += data.usage.output_tokens || 0;
-      stats.cachedTokens += data.usage.cached_tokens || 0;
+      stats.inputTokens += data.usage.prompt_tokens || 0;
+      stats.outputTokens += data.usage.completion_tokens || 0;
       stats.totalTokens += data.usage.total_tokens || 0;
     }
 
-    const translatedText = data.content[0]?.text || '';
-    
-    const lineMap = new Map<number, string>();
-    const lines = translatedText.split('\n');
-    
-    for (const line of lines) {
-      const match = line.match(/^\[(\d+)\]\s*(.+)$/);
-      if (match) {
-        const idx = parseInt(match[1], 10) - 1;
-        lineMap.set(idx, match[2].trim());
-      } else {
-        const cleanLine = line.trim();
-        if (cleanLine && lineMap.size < subtitles.length) {
-          lineMap.set(lineMap.size, cleanLine);
-        }
-      }
-    }
-
-    const translatedLines: string[] = [];
-    for (let i = 0; i < subtitles.length; i++) {
-      translatedLines.push(lineMap.get(i) || subtitles[i].text);
-    }
-
-    return translatedLines;
+    const translatedText = data.choices[0]?.message?.content || '';
+    return parseTranslations(translatedText, subtitles);
   }
 
   function getStats(): TranslationStats {
@@ -184,5 +141,30 @@ Output exactly ${subtitles.length} translated lines:`;
     stats.retries = 0;
   }
 
-  return { translateBatch, getStats, resetStats };
+  return { name: 'openai', translateBatch, getStats, resetStats };
+}
+
+function parseTranslations(text: string, subtitles: Subtitle[]): string[] {
+  const lineMap = new Map<number, string>();
+  const lines = text.split('\n');
+  
+  for (const line of lines) {
+    const match = line.match(/^\[(\d+)\]\s*(.+)$/);
+    if (match) {
+      const idx = parseInt(match[1], 10) - 1;
+      lineMap.set(idx, match[2].trim());
+    } else {
+      const cleanLine = line.trim();
+      if (cleanLine && lineMap.size < subtitles.length) {
+        lineMap.set(lineMap.size, cleanLine);
+      }
+    }
+  }
+
+  const translatedLines: string[] = [];
+  for (let i = 0; i < subtitles.length; i++) {
+    translatedLines.push(lineMap.get(i) || subtitles[i].text);
+  }
+
+  return translatedLines;
 }

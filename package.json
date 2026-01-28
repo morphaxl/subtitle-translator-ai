@@ -1,7 +1,7 @@
 {
   "name": "subtitle-translator",
-  "version": "1.0.0",
-  "description": "AI-powered subtitle translator supporting SRT, VTT, ASS formats with MKV extraction",
+  "version": "2.0.0",
+  "description": "Multi-provider AI subtitle translator with OpenAI, Anthropic, Gemini, Kimi and free Whisper support",
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
@@ -15,7 +15,9 @@
     "extract": "tsx src/cli.ts extract",
     "translate": "tsx src/cli.ts translate",
     "batch": "tsx src/cli.ts batch",
-    "init": "tsx src/cli.ts init"
+    "init": "tsx src/cli.ts init",
+    "transcribe": "tsx src/cli.ts transcribe",
+    "providers": "tsx src/cli.ts providers"
   },
   "keywords": [
     "subtitle",
@@ -27,7 +29,11 @@
     "mkv",
     "extract",
     "ai",
+    "openai",
+    "anthropic",
+    "gemini",
     "kimi",
+    "whisper",
     "localization",
     "i18n"
   ],

@@ -7,9 +7,19 @@ import ora from 'ora';
 import cliProgress from 'cli-progress';
 import { config } from 'dotenv';
 import { parse, serialize, batchSubtitles, detectFormat, type Subtitle, type SubtitleFormat } from './subtitles.js';
-import { createTranslator, type TranslationStats } from './translator.js';
 import { listSubtitleStreams, extractSubtitle, extractAllSubtitles } from './extract.js';
 import { loadBatchConfig, needsExtraction } from './batch.js';
+import { 
+  createProvider, 
+  listProviders, 
+  getProviderHelp, 
+  PROVIDERS,
+  type ProviderName,
+  type TranslationStats,
+  transcribeWithWhisper,
+  isWhisperInstalled,
+  getWhisperModels,
+} from './providers/index.js';
 
 config();
 
@@ -39,23 +49,21 @@ function printBanner(): void {
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
 ║   ${chalk.bold('Subtitle Translator')}                                       ║
-║   ${chalk.dim('Powered by Kimi AI - Natural, localized translations')}       ║
+║   ${chalk.dim('Multi-provider AI translation for subtitles')}               ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
 `));
 }
 
-function printStats(stats: TranslationStats, duration: number, subtitleCount: number): void {
+function printStats(stats: TranslationStats, duration: number, subtitleCount: number, providerName: string): void {
   console.log(chalk.cyan('\n┌─────────────────────────────────────────┐'));
   console.log(chalk.cyan('│') + chalk.bold('          Translation Summary            ') + chalk.cyan('│'));
   console.log(chalk.cyan('├─────────────────────────────────────────┤'));
+  console.log(chalk.cyan('│') + ` Provider:             ${chalk.magenta(providerName.padStart(16))} ` + chalk.cyan('│'));
   console.log(chalk.cyan('│') + ` Subtitles translated: ${chalk.green(subtitleCount.toString().padStart(16))} ` + chalk.cyan('│'));
   console.log(chalk.cyan('│') + ` API calls made:       ${chalk.yellow(stats.apiCalls.toString().padStart(16))} ` + chalk.cyan('│'));
   console.log(chalk.cyan('│') + ` Retries:              ${chalk.yellow(stats.retries.toString().padStart(16))} ` + chalk.cyan('│'));
   console.log(chalk.cyan('│') + ` Total tokens:         ${chalk.blue(stats.totalTokens.toString().padStart(16))} ` + chalk.cyan('│'));
-  console.log(chalk.cyan('│') + ` Input tokens:         ${chalk.dim(stats.inputTokens.toString().padStart(16))} ` + chalk.cyan('│'));
-  console.log(chalk.cyan('│') + ` Output tokens:        ${chalk.dim(stats.outputTokens.toString().padStart(16))} ` + chalk.cyan('│'));
-  console.log(chalk.cyan('│') + ` Cached tokens:        ${chalk.dim(stats.cachedTokens.toString().padStart(16))} ` + chalk.cyan('│'));
   console.log(chalk.cyan('│') + ` Duration:             ${chalk.magenta(formatDuration(duration).padStart(16))} ` + chalk.cyan('│'));
   console.log(chalk.cyan('└─────────────────────────────────────────┘'));
 }
@@ -64,8 +72,39 @@ const program = new Command();
 
 program
   .name('stt')
-  .description('Subtitle Translator - Extract and translate subtitles using Kimi AI')
-  .version('1.0.0');
+  .description('Subtitle Translator - Multi-provider AI translation for subtitles')
+  .version('2.0.0');
+
+// Providers command
+program
+  .command('providers')
+  .description('List available translation providers and their status')
+  .option('-v, --verbose', 'Show detailed information')
+  .action(async (options) => {
+    console.log(chalk.cyan('\n📦 Available Providers:\n'));
+
+    const providers = listProviders();
+    
+    for (const provider of providers) {
+      const status = provider.configured 
+        ? chalk.green('✓ Configured')
+        : chalk.yellow('○ Not configured');
+      
+      console.log(`  ${chalk.bold(provider.displayName.padEnd(15))} ${status}`);
+      console.log(chalk.dim(`    ${provider.description}`));
+      
+      if (options.verbose) {
+        if (provider.envVar) {
+          console.log(chalk.dim(`    Env: ${provider.envVar}`));
+        }
+        console.log(chalk.dim(`    Models: ${provider.models.join(', ')}`));
+      }
+      console.log();
+    }
+
+    console.log(chalk.dim('  Use --provider <name> to select a provider'));
+    console.log(chalk.dim('  Use "stt providers --verbose" for more details\n'));
+  });
 
 // Extract command
 program
@@ -139,6 +178,82 @@ program
     }
   });
 
+// Transcribe command (Whisper)
+program
+  .command('transcribe <input>')
+  .description('Transcribe audio/video to subtitles using Whisper (FREE, local)')
+  .option('-o, --output <path>', 'Output directory')
+  .option('-m, --model <model>', 'Whisper model: tiny, base, small, medium, large, turbo', 'base')
+  .option('-l, --language <lang>', 'Source language (auto-detected if not specified)')
+  .option('--translate', 'Translate to English (only works TO English)')
+  .option('-f, --format <fmt>', 'Output format: srt, vtt, txt, json', 'srt')
+  .option('-v, --verbose', 'Show Whisper output')
+  .option('--list-models', 'List available Whisper models')
+  .action(async (input: string, options) => {
+    if (options.listModels) {
+      console.log(chalk.cyan('\n🎤 Available Whisper Models:\n'));
+      const models = getWhisperModels();
+      console.log(chalk.dim('─'.repeat(75)));
+      console.log(`  ${'Model'.padEnd(8)} │ ${'Params'.padEnd(8)} │ ${'VRAM'.padEnd(8)} │ ${'Speed'.padEnd(8)} │ Notes`);
+      console.log(chalk.dim('─'.repeat(75)));
+      for (const m of models) {
+        console.log(`  ${chalk.green(m.name.padEnd(8))} │ ${m.params.padEnd(8)} │ ${m.vram.padEnd(8)} │ ${m.speed.padEnd(8)} │ ${chalk.dim(m.note)}`);
+      }
+      console.log(chalk.dim('─'.repeat(75)));
+      console.log(chalk.dim('\n  Note: "turbo" model does NOT support translation.\n'));
+      return;
+    }
+
+    if (!existsSync(input)) {
+      console.error(chalk.red(`\n✖ Error: File not found: ${input}`));
+      process.exit(1);
+    }
+
+    const spinner = ora({ color: 'cyan' });
+
+    try {
+      spinner.start('Checking Whisper installation...');
+      const installed = await isWhisperInstalled();
+      
+      if (!installed) {
+        spinner.fail('Whisper not installed');
+        console.error(chalk.red('\n✖ Whisper CLI is not installed.\n'));
+        console.log(chalk.yellow('Install with:'));
+        console.log(chalk.dim('  pip install -U openai-whisper'));
+        console.log(chalk.dim('  brew install ffmpeg  # macOS'));
+        console.log(chalk.dim('  apt install ffmpeg   # Linux\n'));
+        process.exit(1);
+      }
+
+      spinner.text = `Transcribing with Whisper (model: ${options.model})...`;
+      
+      const result = await transcribeWithWhisper(input, {
+        model: options.model,
+        task: options.translate ? 'translate' : 'transcribe',
+        language: options.language,
+        outputFormat: options.format,
+        outputDir: options.output || '.',
+        verbose: options.verbose,
+      });
+
+      spinner.succeed(`Transcription complete!`);
+      console.log(chalk.green(`\n✔ Output: ${chalk.bold(result.outputFile)}`));
+      
+      if (result.subtitles) {
+        console.log(chalk.dim(`  ${result.subtitles.length} subtitles generated`));
+      }
+      if (result.duration) {
+        console.log(chalk.dim(`  Duration: ${formatDuration(result.duration)}`));
+      }
+      console.log();
+
+    } catch (error) {
+      spinner.fail('Transcription failed');
+      console.error(chalk.red(`\n✖ Error: ${error instanceof Error ? error.message : error}\n`));
+      process.exit(1);
+    }
+  });
+
 // Translate command (default)
 program
   .command('translate <input>', { isDefault: true })
@@ -147,10 +262,11 @@ program
   .option('-f, --from <lang>', 'Source language', 'English')
   .option('-t, --to <lang>', 'Target language', 'Hindi')
   .option('--format <format>', 'Output format (srt, vtt, ass)')
-  .option('-k, --api-key <key>', 'Kimi API key (or set KIMI_API_KEY env)')
-  .option('-m, --model <model>', 'Model to use', 'kimi-for-coding')
-  .option('-b, --batch-size <n>', 'Subtitles per batch (default: 500)', '500')
-  .option('--base-url <url>', 'API base URL', 'https://api.kimi.com/coding')
+  .option('-p, --provider <name>', 'AI provider: openai, anthropic, gemini, kimi')
+  .option('-k, --api-key <key>', 'API key (or set via environment variable)')
+  .option('-m, --model <model>', 'Model to use (provider-specific)')
+  .option('-b, --batch-size <n>', 'Subtitles per batch', '100')
+  .option('--base-url <url>', 'Custom API base URL')
   .option('--max-retries <n>', 'Max retries per request', '3')
   .option('--delay <ms>', 'Delay between batches in ms', '300')
   .option('-q, --quiet', 'Minimal output')
@@ -162,13 +278,6 @@ program
       printBanner();
     }
 
-    const apiKey = options.apiKey || process.env.KIMI_API_KEY;
-    if (!apiKey) {
-      console.error(chalk.red('\n✖ Error: API key required'));
-      console.error(chalk.dim('  Use --api-key or set KIMI_API_KEY environment variable'));
-      process.exit(1);
-    }
-
     if (!existsSync(input)) {
       console.error(chalk.red(`\n✖ Error: File not found: ${input}`));
       process.exit(1);
@@ -176,11 +285,26 @@ program
 
     const sourceLang = resolveLanguage(options.from);
     const targetLang = resolveLanguage(options.to);
-    const batchSize = Math.min(1000, Math.max(10, parseInt(options.batchSize, 10)));
+    const batchSize = Math.min(500, Math.max(10, parseInt(options.batchSize, 10)));
 
-    const spinner = ora({ text: 'Reading input file...', color: 'cyan' }).start();
+    const spinner = ora({ text: 'Initializing provider...', color: 'cyan' }).start();
 
     try {
+      // Create provider with auto-detection
+      const provider = createProvider({
+        provider: options.provider as ProviderName | undefined,
+        apiKey: options.apiKey,
+        model: options.model,
+        baseUrl: options.baseUrl,
+        sourceLang,
+        targetLang,
+        maxRetries: parseInt(options.maxRetries, 10),
+      });
+
+      const providerInfo = PROVIDERS[provider.name];
+      spinner.succeed(`Using ${chalk.magenta(providerInfo.displayName)} (${provider.name})`);
+
+      spinner.start('Reading input file...');
       const content = await readFile(input, 'utf-8');
       const inputFormat = detectFormat(content, input);
       const outputFormat: SubtitleFormat = options.format || inputFormat;
@@ -199,15 +323,6 @@ program
 
       console.log(chalk.blue(`\n📝 Translation: ${chalk.bold(sourceLang)} → ${chalk.bold(targetLang)}`));
       console.log(chalk.blue(`📁 Output: ${chalk.dim(outputPath)}\n`));
-
-      const translator = createTranslator({
-        apiKey,
-        baseUrl: options.baseUrl,
-        model: options.model,
-        sourceLang,
-        targetLang,
-        maxRetries: parseInt(options.maxRetries, 10),
-      });
 
       const batches = batchSubtitles(subtitles, batchSize);
 
@@ -229,7 +344,7 @@ program
         const batch = batches[i];
         const startIdx = subtitles.indexOf(batch[0]);
 
-        const translations = await translator.translateBatch(batch);
+        const translations = await provider.translateBatch(batch);
 
         for (let j = 0; j < batch.length; j++) {
           translatedSubtitles[startIdx + j] = {
@@ -257,10 +372,10 @@ program
       await writeFile(outputPath, output, 'utf-8');
 
       const duration = Date.now() - startTime;
-      const stats = translator.getStats();
+      const stats = provider.getStats();
 
       if (!options.quiet) {
-        printStats(stats, duration, subtitles.length);
+        printStats(stats, duration, subtitles.length, providerInfo.displayName);
       }
 
       console.log(chalk.green(`\n✔ Successfully saved to: ${chalk.bold(outputPath)}\n`));
@@ -275,31 +390,25 @@ program
 program
   .command('batch [config]')
   .description('Process multiple jobs from a YAML config file')
-  .option('-k, --api-key <key>', 'Kimi API key (or set KIMI_API_KEY env)')
-  .option('-m, --model <model>', 'Model to use', 'kimi-for-coding')
-  .option('--base-url <url>', 'API base URL', 'https://api.kimi.com/coding')
+  .option('-p, --provider <name>', 'AI provider: openai, anthropic, gemini, kimi')
+  .option('-k, --api-key <key>', 'API key (or set via environment variable)')
+  .option('-m, --model <model>', 'Model to use (provider-specific)')
+  .option('--base-url <url>', 'Custom API base URL')
   .option('--dry-run', 'Show what would be done without executing')
   .action(async (configPath: string = 'jobs.yaml', options) => {
     printBanner();
-
-    const apiKey = options.apiKey || process.env.KIMI_API_KEY;
-    if (!apiKey && !options.dryRun) {
-      console.error(chalk.red('\n✖ Error: API key required'));
-      console.error(chalk.dim('  Use --api-key or set KIMI_API_KEY environment variable'));
-      process.exit(1);
-    }
 
     const spinner = ora({ color: 'cyan' });
 
     try {
       spinner.start(`Loading config from ${configPath}...`);
-      const config = await loadBatchConfig(configPath);
-      spinner.succeed(`Loaded ${chalk.green(config.jobs.length)} job(s) from config`);
+      const batchConfig = await loadBatchConfig(configPath);
+      spinner.succeed(`Loaded ${chalk.green(batchConfig.jobs.length)} job(s) from config`);
 
       if (options.dryRun) {
         console.log(chalk.yellow('\n🔍 Dry run - showing planned actions:\n'));
-        for (let i = 0; i < config.jobs.length; i++) {
-          const job = config.jobs[i];
+        for (let i = 0; i < batchConfig.jobs.length; i++) {
+          const job = batchConfig.jobs[i];
           const needsExtract = needsExtraction(job);
           console.log(chalk.cyan(`Job ${i + 1}:`));
           console.log(`  Input:  ${job.input}`);
@@ -312,14 +421,14 @@ program
         return;
       }
 
-      console.log(chalk.blue(`\n📋 Processing ${config.jobs.length} job(s)...\n`));
+      console.log(chalk.blue(`\n📋 Processing ${batchConfig.jobs.length} job(s)...\n`));
 
       let completed = 0;
       let failed = 0;
 
-      for (let i = 0; i < config.jobs.length; i++) {
-        const job = config.jobs[i];
-        const jobNum = `[${i + 1}/${config.jobs.length}]`;
+      for (let i = 0; i < batchConfig.jobs.length; i++) {
+        const job = batchConfig.jobs[i];
+        const jobNum = `[${i + 1}/${batchConfig.jobs.length}]`;
         
         console.log(chalk.cyan(`\n${'─'.repeat(60)}`));
         console.log(chalk.cyan(`${jobNum} ${job.input} → ${job.to}`));
@@ -345,15 +454,17 @@ program
           const outputPath = job.output || 
             subtitlePath.replace(/\.(srt|vtt|ass|ssa)$/i, `.${job.to.toLowerCase()}.${outputExt}`);
 
-          const translator = createTranslator({
-            apiKey: apiKey!,
-            baseUrl: options.baseUrl,
+          // Create provider
+          const provider = createProvider({
+            provider: options.provider as ProviderName | undefined,
+            apiKey: options.apiKey,
             model: options.model,
+            baseUrl: options.baseUrl,
             sourceLang: resolveLanguage(job.from || 'English'),
             targetLang: resolveLanguage(job.to),
           });
 
-          const batches = batchSubtitles(subtitles, 500);
+          const batches = batchSubtitles(subtitles, 100);
           const translatedSubtitles: Subtitle[] = [...subtitles];
 
           const progressBar = new cliProgress.SingleBar({
@@ -369,7 +480,7 @@ program
           for (let b = 0; b < batches.length; b++) {
             const batch = batches[b];
             const startIdx = subtitles.indexOf(batch[0]);
-            const translations = await translator.translateBatch(batch);
+            const translations = await provider.translateBatch(batch);
 
             for (let j = 0; j < batch.length; j++) {
               translatedSubtitles[startIdx + j] = { ...batch[j], text: translations[j] };
